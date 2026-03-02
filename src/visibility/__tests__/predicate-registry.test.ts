@@ -15,6 +15,7 @@ function createDefaultConfig(
     debug: false,
     sentryDisabled: false,
     enabledWorkflows: [],
+    customWorkflows: {},
     experimentalWorkflowDiscovery: false,
     disableSessionDefaults: false,
     disableXcodeAutoSync: false,
