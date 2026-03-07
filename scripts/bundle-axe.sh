@@ -94,11 +94,8 @@ else
 
     echo "📥 Downloading latest AXe release from GitHub..."
 
-    # On macOS, prefer the Homebrew-specific archive (unsigned for relocation
-    # compatibility) and ad-hoc sign it later. On non-macOS (e.g. CI on Linux),
-    # codesign is unavailable so use the legacy pre-signed archive directly.
     AXE_RELEASE_BASE_URL="https://github.com/cameroncooke/AXe/releases/download/v${PINNED_AXE_VERSION}"
-    AXE_HOMEBREW_URL="${AXE_RELEASE_BASE_URL}/AXe-macOS-homebrew-v${PINNED_AXE_VERSION}.tar.gz"
+    AXE_UNIVERSAL_URL="${AXE_RELEASE_BASE_URL}/AXe-macOS-v${PINNED_AXE_VERSION}-universal.tar.gz"
     AXE_LEGACY_URL="${AXE_RELEASE_BASE_URL}/AXe-macOS-v${PINNED_AXE_VERSION}.tar.gz"
 
     # Create temp directory
@@ -110,11 +107,11 @@ else
         echo "📥 Non-macOS detected; downloading pre-signed legacy archive ($AXE_LEGACY_URL)..."
         curl -fL -o "axe-release.tar.gz" "$AXE_LEGACY_URL"
         AXE_ARCHIVE_FLAVOR="legacy-signed"
-    elif curl -fL -o "axe-release.tar.gz" "$AXE_HOMEBREW_URL"; then
-        AXE_ARCHIVE_FLAVOR="homebrew-unsigned"
-        echo "✅ Downloaded AXe Homebrew archive"
+    elif curl -fL -o "axe-release.tar.gz" "$AXE_UNIVERSAL_URL"; then
+        AXE_ARCHIVE_FLAVOR="universal"
+        echo "✅ Downloaded AXe universal archive"
     else
-        echo "⚠️  AXe Homebrew archive unavailable, falling back to legacy archive"
+        echo "⚠️  AXe universal archive unavailable, falling back to legacy archive"
         curl -fL -o "axe-release.tar.gz" "$AXE_LEGACY_URL"
         AXE_ARCHIVE_FLAVOR="legacy-signed"
     fi
@@ -122,11 +119,14 @@ else
     echo "📦 Extracting AXe release archive..."
     tar -xzf "axe-release.tar.gz"
 
-    # Find the extracted directory (might be named differently)
-    EXTRACTED_DIR=$(find . -type d \( -name "*AXe*" -o -name "*axe*" \) | head -1)
-    if [ -z "$EXTRACTED_DIR" ]; then
-        # If no AXe directory found, assume files are in current directory
+    # Find the extracted directory containing the axe binary
+    if [ -f "axe" ] || [ -f "bin/axe" ]; then
         EXTRACTED_DIR="."
+    else
+        EXTRACTED_DIR=$(find . -maxdepth 2 -type f -name "axe" ! -path "*/skills/*" | head -1 | xargs -I{} dirname {})
+        if [ -z "$EXTRACTED_DIR" ]; then
+            EXTRACTED_DIR="."
+        fi
     fi
 
     cd "$EXTRACTED_DIR"
@@ -196,8 +196,8 @@ if [ "$OS_NAME" = "Darwin" ]; then
         ad_hoc_sign_bundled_axe_assets
     fi
 
-    if [ "$AXE_ARCHIVE_FLAVOR" = "homebrew-unsigned" ]; then
-        echo "ℹ️ Homebrew AXe archive detected; using ad-hoc signatures for local runtime compatibility"
+    if [ "$AXE_ARCHIVE_FLAVOR" = "universal" ]; then
+        echo "ℹ️ Universal AXe archive detected; using ad-hoc signatures for local runtime compatibility"
     else
         echo "🔏 Verifying AXe signatures..."
         if ! codesign --verify --deep --strict "$BUNDLED_DIR/axe"; then
@@ -222,8 +222,8 @@ if [ "$OS_NAME" = "Darwin" ]; then
         done < <(find "$BUNDLED_DIR/Frameworks" -name "*.framework" -type d)
     fi
 
-    if [ "$AXE_ARCHIVE_FLAVOR" = "homebrew-unsigned" ]; then
-        echo "ℹ️ Skipping Gatekeeper assessment for unsigned AXe Homebrew archive"
+    if [ "$AXE_ARCHIVE_FLAVOR" = "universal" ]; then
+        echo "ℹ️ Skipping Gatekeeper assessment for universal AXe archive"
     else
         echo "🛡️ Assessing AXe with Gatekeeper..."
         SPCTL_LOG="$(mktemp)"
