@@ -1,15 +1,87 @@
 # Changelog
 
-## [Unreleased]
+## [2.2.0]
 
 ### Added
 
-- Added support for `customWorkflows` in `.xcodebuildmcp/config.yaml`, so user-defined workflow names can be referenced from `enabledWorkflows` and mapped to explicit tool lists.
+- Added `get_coverage_report` and `get_file_coverage` tools for inspecting code coverage from test results — view per-target summaries or drill into function-level coverage and uncovered line ranges for specific files ([#240](https://github.com/getsentry/XcodeBuildMCP/pull/240) by [@irangareddy](https://github.com/irangareddy)). See [docs/TOOLS.md](docs/TOOLS.md).
+- Added a unified build-and-run command for physical devices, matching the existing simulator workflow so agents can build and launch device apps in a single step.
+- Added an interactive setup wizard via `xcodebuildmcp setup` that walks you through creating or updating `.xcodebuildmcp/config.yaml` — select workflows, pick a simulator, set your scheme and project, and configure debug options without editing YAML by hand. Non-interactive mode remains available for CI and scripting. See [docs/CONFIGURATION.md](docs/CONFIGURATION.md).
+
+  ```bash
+  xcodebuildmcp setup
+  ```
+- Added `AGENTS.md` generation to the `init` command, providing prescriptive agent workflow instructions for your project.
+- Added support for custom workflows in `.xcodebuildmcp/config.yaml`. Define your own workflow names and map them to an explicit list of tools, then reference them from `enabledWorkflows` like any built-in workflow. This lets you limit the tools your agent sees to exactly the ones you need. See [docs/CONFIGURATION.md](docs/CONFIGURATION.md#custom-workflows).
+
+  ```yaml
+  enabledWorkflows: ["my-workflow"]
+  customWorkflows:
+    my-workflow:
+      - build_run_sim
+      - record_sim_video
+      - screenshot
+  ```
+- Added AdaL CLI setup instructions ([#242](https://github.com/getsentry/XcodeBuildMCP/pull/242) by [@Abdulrahmansoliman](https://github.com/Abdulrahmansoliman)).
+
+### Changed
+
+- CLI now auto-fills tool arguments from session defaults. If your config file sets a scheme, project path, or simulator, every CLI command picks those up automatically — no need to repeat `--scheme`, `--project-path`, and similar flags on every invocation. See [docs/CLI.md](docs/CLI.md).
+
+  ```yaml
+  # .xcodebuildmcp/config.yaml
+  sessionDefaults:
+    scheme: MyApp
+    projectPath: ./MyApp.xcodeproj
+    simulatorName: iPhone 17 Pro
+  ```
+
+  ```bash
+  # Before: every command needed explicit flags
+  xcodebuildmcp simulator build --scheme MyApp --project-path ./MyApp.xcodeproj
+
+  # Now: flags are filled from session defaults
+  xcodebuildmcp simulator build
+  ```
+
+  This also works with session defaults profiles, which is especially useful for monorepos. Define a profile per sub-project and the CLI uses the active profile's values. Override the profile for a single command with `--profile`. See [docs/SESSION_DEFAULTS.md](docs/SESSION_DEFAULTS.md#namespaced-profiles).
+
+  ```yaml
+  # .xcodebuildmcp/config.yaml
+  schemaVersion: 1
+  sessionDefaultsProfiles:
+    calculator:
+      workspacePath: ./iOS_Calculator/CalculatorApp.xcworkspace
+      scheme: CalculatorApp
+      simulatorName: iPhone 17 Pro
+    ios-test:
+      projectPath: ./iOS/MCPTest.xcodeproj
+      scheme: MCPTest
+      simulatorName: iPhone 17 Pro
+    spm:
+      projectPath: ./spm
+      scheme: spm
+  activeSessionDefaultsProfile: calculator
+  ```
+
+  ```bash
+  # Build using the active profile (calculator)
+  xcodebuildmcp simulator build-and-run
+
+  # Build a different sub-project without switching the active profile
+  xcodebuildmcp simulator build-and-run --profile ios-test
+  ```
+- Default simulator updated from iPhone 16 to iPhone 17.
+- Tool annotations now more accurately classify operations, reducing unnecessary confirmation prompts in MCP clients that respect annotations ([#253](https://github.com/getsentry/XcodeBuildMCP/pull/253) by [@saschagordner](https://github.com/saschagordner)).
+- Improved agent workflow guidance with more prescriptive instructions for common tasks.
+- Bundled AXe updated to 1.5.2.
 
 ### Fixed
 
-- Fixed `swift_package_build`, `swift_package_test`, and `swift_package_clean` swallowing compiler diagnostics on failure by treating empty stderr as falsy, so stdout diagnostics are included in the error response ([#243](https://github.com/getsentry/XcodeBuildMCP/issues/243)).
-- Fixed stderr warnings (e.g. "multiple matching destinations") hiding actual test failures by prioritizing xcresult output when available ([#231](https://github.com/getsentry/XcodeBuildMCP/issues/231))
+- Fixed Swift Package tools (`swift_package_build`, `swift_package_test`, `swift_package_clean`) hiding compiler diagnostics when stderr was empty ([#255](https://github.com/getsentry/XcodeBuildMCP/pull/255) by [@doovers](https://github.com/doovers)).
+- Fixed stderr warnings (e.g. "multiple matching destinations") hiding actual test failures by prioritizing xcresult output when available ([#254](https://github.com/getsentry/XcodeBuildMCP/pull/254) by [@czottmann](https://github.com/czottmann)).
+
+Various other internal improvements to stability, performance, and code quality.
 
 ## [2.1.0]
 
@@ -318,3 +390,4 @@ Please note that the UI automation features are an early preview and currently i
 ## [v1.0.1] - 2025-04-02
 - Initial release of XcodeBuildMCP
 - Basic support for building iOS and macOS applications
+
