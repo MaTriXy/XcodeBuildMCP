@@ -76,12 +76,12 @@ if [ "$USE_LOCAL_AXE" = true ] && [ -d "$AXE_LOCAL_DIR" ] && [ -f "$AXE_LOCAL_DI
     for framework in .build/release/*.framework; do
         if [ -d "$framework" ]; then
             echo "📦 Copying framework: $(basename "$framework")"
-            cp -r "$framework" "$BUNDLED_DIR/Frameworks/"
+            cp -R "$framework" "$BUNDLED_DIR/Frameworks/"
 
             # Only copy nested frameworks if they exist
             if [ -d "$framework/Frameworks" ]; then
                 echo "📦 Found nested frameworks in $(basename "$framework")"
-                cp -r "$framework/Frameworks"/* "$BUNDLED_DIR/Frameworks/" 2>/dev/null || true
+                cp -R "$framework/Frameworks"/* "$BUNDLED_DIR/Frameworks/" 2>/dev/null || true
             fi
         fi
     done
@@ -95,6 +95,7 @@ else
     echo "📥 Downloading latest AXe release from GitHub..."
 
     AXE_RELEASE_BASE_URL="https://github.com/cameroncooke/AXe/releases/download/v${PINNED_AXE_VERSION}"
+    AXE_HOMEBREW_URL="${AXE_RELEASE_BASE_URL}/AXe-macOS-homebrew-v${PINNED_AXE_VERSION}.tar.gz"
     AXE_UNIVERSAL_URL="${AXE_RELEASE_BASE_URL}/AXe-macOS-v${PINNED_AXE_VERSION}-universal.tar.gz"
     AXE_LEGACY_URL="${AXE_RELEASE_BASE_URL}/AXe-macOS-v${PINNED_AXE_VERSION}.tar.gz"
 
@@ -102,8 +103,14 @@ else
     mkdir -p "$AXE_TEMP_DIR"
     cd "$AXE_TEMP_DIR"
 
-    # Download and extract the release
-    if curl -fL -o "axe-release.tar.gz" "$AXE_UNIVERSAL_URL"; then
+    # Download the release archive.
+    # Prefer the Homebrew archive (unsigned, proper framework symlinks) so that
+    # Homebrew can cleanly apply its own ad-hoc signatures during installation.
+    # Fall back to universal, then legacy.
+    if curl -fL -o "axe-release.tar.gz" "$AXE_HOMEBREW_URL"; then
+        AXE_ARCHIVE_FLAVOR="homebrew"
+        echo "✅ Downloaded AXe homebrew archive"
+    elif curl -fL -o "axe-release.tar.gz" "$AXE_UNIVERSAL_URL"; then
         AXE_ARCHIVE_FLAVOR="universal"
         if [ "$(uname -s)" != "Darwin" ]; then
             echo "✅ Downloaded AXe universal archive for non-macOS bundling"
@@ -151,10 +158,10 @@ else
     mkdir -p "$BUNDLED_DIR/Frameworks"
 
     if [ -d "Frameworks" ]; then
-        cp -r Frameworks/* "$BUNDLED_DIR/Frameworks/"
+        cp -R Frameworks/* "$BUNDLED_DIR/Frameworks/"
     elif [ -d "lib" ]; then
         # Look for frameworks in lib directory
-        find lib -name "*.framework" -exec cp -r {} "$BUNDLED_DIR/Frameworks/" \;
+        find lib -name "*.framework" -exec cp -R {} "$BUNDLED_DIR/Frameworks/" \;
     else
         echo "⚠️  No frameworks directory found in release archive"
         echo "📂 Contents of release archive:"
@@ -169,6 +176,61 @@ echo "📦 Copied $FRAMEWORK_COUNT frameworks"
 # List the frameworks for verification
 echo "🔍 Bundled frameworks:"
 ls -la "$BUNDLED_DIR/Frameworks/"
+
+# Validate bundled framework structure.
+# Catches two regressions that break Homebrew installations:
+#   1. Dereferenced symlinks (e.g. cp -r instead of cp -R) cause codesign to
+#      report "bundle format is ambiguous (could be app or framework)".
+#   2. Pre-signed binaries in the homebrew archive would conflict with
+#      Homebrew's own ad-hoc signing step.
+validate_framework_bundles() {
+    local has_errors=false
+
+    while IFS= read -r framework_path; do
+        local fw_name="$(basename "$framework_path" .framework)"
+
+        # Versioned framework must have Versions/A
+        if [ ! -d "$framework_path/Versions/A" ]; then
+            continue
+        fi
+
+        # Versions/Current must be a symlink to A
+        if [ -d "$framework_path/Versions/Current" ] && [ ! -L "$framework_path/Versions/Current" ]; then
+            echo "❌ $fw_name: Versions/Current is a real directory, expected symlink to A"
+            has_errors=true
+        fi
+
+        # Top-level binary must be a symlink into Versions/Current/
+        if [ -e "$framework_path/$fw_name" ] && [ ! -L "$framework_path/$fw_name" ]; then
+            echo "❌ $fw_name: top-level binary is a real file, expected symlink"
+            has_errors=true
+        fi
+
+        # For the homebrew archive, binaries must be unsigned
+        if [ "$AXE_ARCHIVE_FLAVOR" = "homebrew" ]; then
+            local fw_binary="$framework_path/Versions/A/$fw_name"
+            if [ -f "$fw_binary" ] && codesign -dv "$fw_binary" >/dev/null 2>&1; then
+                echo "❌ $fw_name: binary has a code signature but homebrew archive should be unsigned"
+                has_errors=true
+            fi
+        fi
+    done < <(find "$BUNDLED_DIR/Frameworks" -name "*.framework" -type d -maxdepth 1)
+
+    if [ "$AXE_ARCHIVE_FLAVOR" = "homebrew" ] && [ -f "$BUNDLED_DIR/axe" ]; then
+        if codesign -dv "$BUNDLED_DIR/axe" >/dev/null 2>&1; then
+            echo "❌ axe binary has a code signature but homebrew archive should be unsigned"
+            has_errors=true
+        fi
+    fi
+
+    if [ "$has_errors" = true ]; then
+        echo "❌ Framework bundle validation failed"
+        exit 1
+    fi
+    echo "✅ Framework bundle structure validated"
+}
+
+validate_framework_bundles
 
 ad_hoc_sign_bundled_axe_assets() {
     echo "🔏 Applying ad-hoc signatures to bundled AXe assets..."
@@ -196,8 +258,8 @@ if [ "$OS_NAME" = "Darwin" ]; then
         ad_hoc_sign_bundled_axe_assets
     fi
 
-    if [ "$AXE_ARCHIVE_FLAVOR" = "universal" ]; then
-        echo "ℹ️ Universal AXe archive detected; using ad-hoc signatures for local runtime compatibility"
+    if [ "$AXE_ARCHIVE_FLAVOR" = "homebrew" ] || [ "$AXE_ARCHIVE_FLAVOR" = "universal" ]; then
+        echo "ℹ️ ${AXE_ARCHIVE_FLAVOR} AXe archive detected; using ad-hoc signatures for local runtime compatibility"
     else
         echo "🔏 Verifying AXe signatures..."
         if ! codesign --verify --deep --strict "$BUNDLED_DIR/axe"; then
@@ -222,8 +284,8 @@ if [ "$OS_NAME" = "Darwin" ]; then
         done < <(find "$BUNDLED_DIR/Frameworks" -name "*.framework" -type d)
     fi
 
-    if [ "$AXE_ARCHIVE_FLAVOR" = "universal" ]; then
-        echo "ℹ️ Skipping Gatekeeper assessment for universal AXe archive"
+    if [ "$AXE_ARCHIVE_FLAVOR" = "homebrew" ] || [ "$AXE_ARCHIVE_FLAVOR" = "universal" ]; then
+        echo "ℹ️ Skipping Gatekeeper assessment for ${AXE_ARCHIVE_FLAVOR} AXe archive"
     else
         echo "🛡️ Assessing AXe with Gatekeeper..."
         SPCTL_LOG="$(mktemp)"
