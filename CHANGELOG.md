@@ -1,21 +1,24 @@
 # Changelog
 
-## [Unreleased]
+## [2.3.0]
 
 ### Added
 
-- Added environment variable support for flat session default bootstrap values (for example `XCODEBUILDMCP_WORKSPACE_PATH`, `XCODEBUILDMCP_SCHEME`, and `XCODEBUILDMCP_PLATFORM`) so constrained MCP clients can supply startup defaults without changing project config files ([#268](https://github.com/getsentry/XcodeBuildMCP/pull/268) by [@detailobsessed](https://github.com/detailobsessed)).
-- Added `--format mcp-json` flag to `xcodebuildmcp setup` that exports an env-based MCP bootstrap config block instead of writing `config.yaml` ([#268](https://github.com/getsentry/XcodeBuildMCP/pull/268) by [@detailobsessed](https://github.com/detailobsessed)).
-- Added MCP bootstrap config examples to [docs/CONFIGURATION.md](docs/CONFIGURATION.md) for clients that need env-based startup defaults ([#268](https://github.com/getsentry/XcodeBuildMCP/pull/268) by [@detailobsessed](https://github.com/detailobsessed)).
+- Added environment variable support for session defaults (e.g. `XCODEBUILDMCP_WORKSPACE_PATH`, `XCODEBUILDMCP_SCHEME`, `XCODEBUILDMCP_PLATFORM`) so MCP clients can supply startup defaults in their config without a project config file ([#268](https://github.com/getsentry/XcodeBuildMCP/pull/268) by [@detailobsessed](https://github.com/detailobsessed)). See [docs/CONFIGURATION.md](docs/CONFIGURATION.md#environment-variables).
+- Added `--format mcp-json` flag to `xcodebuildmcp setup` that exports an env-based MCP client config block instead of writing `config.yaml` ([#268](https://github.com/getsentry/XcodeBuildMCP/pull/268) by [@detailobsessed](https://github.com/detailobsessed)).
 
 ### Changed
 
-- Clarified configuration layering: `session_set_defaults` overrides `config.yaml`, which overrides env-based bootstrap values. See [docs/CONFIGURATION.md](docs/CONFIGURATION.md) ([#268](https://github.com/getsentry/XcodeBuildMCP/pull/268) by [@detailobsessed](https://github.com/detailobsessed)).
+- Clarified configuration layering: `session_set_defaults` overrides `config.yaml`, which overrides environment variables. See [docs/CONFIGURATION.md](docs/CONFIGURATION.md) ([#268](https://github.com/getsentry/XcodeBuildMCP/pull/268) by [@detailobsessed](https://github.com/detailobsessed)).
+- Improved `xcodebuildmcp setup` reliability when optional targets (like physical devices) are unavailable.
 
 ### Fixed
 
-- Fixed startup simulator metadata refresh mutating `.xcodebuildmcp/config.yaml` by keeping derived simulator values in memory instead of persisting them during MCP startup hydration ([#230](https://github.com/getsentry/XcodeBuildMCP/issues/230)).
-- Fixed orphaned MCP server processes by attaching shutdown handlers before async startup, explicitly stopping the Xcode watcher during teardown, and adding lifecycle diagnostics for memory and peer-process anomalies ([#273](https://github.com/getsentry/XcodeBuildMCP/issues/273)).
+- Fixed `.xcodebuildmcp/config.yaml` being modified on startup when simulator metadata was refreshed ([#230](https://github.com/getsentry/XcodeBuildMCP/issues/230)).
+- Fixed orphaned MCP server processes that could remain running after the client disconnects ([#273](https://github.com/getsentry/XcodeBuildMCP/issues/273)).
+- Fixed `list-schemes` CLI command missing `--project-path` and `--workspace-path` flags ([#271](https://github.com/getsentry/XcodeBuildMCP/pull/271)).
+- Fixed Xcode IDE workflow tools not working when invoked from the CLI.
+- Fixed Swift Package tools not properly waiting for process exit when stopping.
 
 ## [2.2.1]
 
@@ -411,3 +414,4 @@ Please note that the UI automation features are an early preview and currently i
 ## [v1.0.1] - 2025-04-02
 - Initial release of XcodeBuildMCP
 - Basic support for building iOS and macOS applications
+
