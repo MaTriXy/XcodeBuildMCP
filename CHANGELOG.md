@@ -1,5 +1,11 @@
 # Changelog
 
+## [2.3.1]
+
+### Fixed
+
+- Fixed unnecessary tool confirmation prompts in MCP clients (such as Codex) that treat missing approval annotations as high-risk defaults ([#297](https://github.com/getsentry/XcodeBuildMCP/pull/297)).
+
 ## [2.3.0]
 
 ### Added
@@ -414,4 +420,5 @@ Please note that the UI automation features are an early preview and currently i
 ## [v1.0.1] - 2025-04-02
 - Initial release of XcodeBuildMCP
 - Basic support for building iOS and macOS applications
+
 
