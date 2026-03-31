@@ -1,5 +1,11 @@
 # Changelog
 
+## [2.3.2]
+
+### Fixed
+
+- Improved reliability of internal telemetry during shutdown ([#302](https://github.com/getsentry/XcodeBuildMCP/pull/302)).
+
 ## [2.3.1]
 
 ### Fixed
